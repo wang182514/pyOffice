@@ -42,7 +42,7 @@ def set_run_font(run, name):
     run._element.rPr.rFonts.set(qn("w:eastAsia"), name)   # 中文 (eastAsia)
 
 
-def set_style_font(style, name):
+def set_style_font(style, font_name):
     """给样式设置字体 —— 一次设置, 所有使用该样式的文字全部生效
 
     直接格式(加在单个 run 上)只影响那一段文字;
@@ -51,10 +51,10 @@ def set_style_font(style, name):
 
     Args:
         style: python-docx 的 Style 对象 (如 doc.styles["Normal"])
-        name:  字体名
+        font_name:  字体名
     """
-    style.font.name = name
-    style.element.rPr.rFonts.set(qn("w:eastAsia"), name)
+    style.font.name = font_name
+    style.element.rPr.rFonts.set(qn("w:eastAsia"), font_name)
 
 
 # =================================================================

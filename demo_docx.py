@@ -95,7 +95,7 @@ def write_docx(path):
     #    每个 run 单独设省事。styles["名字"] 按样式名取样式对象。
     for style_name in ["Normal", "Title", "Heading 1", "Heading 2",
                        "List Bullet", "List Number"]:
-        set_style_font(doc.styles[style_name], CN_FONT)
+        set_style_font(doc.styles[style_name], CN_FONT)  #在函数里读全局变量不需要任何声明，但如果想修改（赋值）就必须用 global 关键字
 
     # 1. 标题: add_heading(文字, level)
     #    level=0 → Title 样式(文档大标题, 通常是更大的字)
@@ -259,10 +259,14 @@ if __name__ == "__main__":
     fill_template(DOCX_PATH)   # 第 2 步: 打开模板, 按书签填入数据
     read_docx(DOCX_PATH)       # 第 3 步: 读回来验证结果
     path = os.path.join(OUT_DIR, "my_demo.docx")
-    doc = Document(path)
-    fill_bookmark(doc,"mark1","mk1")
-    fill_bookmark(doc, "mark2", "mk2")
-    doc.save(path)
+    try:
+        doc = Document(path)
+        fill_bookmark(doc,"mark1","mk1")
+        fill_bookmark(doc, "mark2", "mk2")
+        doc.save(path)
+    except :
+        print(666)
+        pass
     pass
 
 
