@@ -1,47 +1,57 @@
 # -*- coding: utf-8 -*-
 """office_utils —— Office 文档(docx/xlsx)读写工具包
 
-当前模块: 书签操作 (bookmark)
-封装了书签的创建、查找、填充操作, 用于"模板填充"场景:
-Word 里排版好模板并插入书签, Python 打开模板后按书签名填入数据。
+从一个练习 demo 逐步封装而来: 把"碰巧能用"的代码提炼成"知道边界"的工具函数,
+目标场景是"射频组件测试结果 → word 报告 / excel 记录"。
+
+设计原则:
+- 按功能域分模块, 不按读/写分
+- __init__.py 统一导出, 调用方永远不感知内部文件结构
+- 工具函数无状态, 不封装类 (类/配置留给将来高层 API)
 
 使用示例:
     from docx import Document
-    from office_utils import fill_bookmark, fill_bookmarks, set_run_font
+    from office_utils import fill_bookmarks, set_cell, add_rows, set_doc_fonts
 
     doc = Document("template.docx")
-
-    # 单个填充 (默认清除旧内容)
-    fill_bookmark(doc, "reporter", "王五", font="微软雅黑")
-
-    # 批量填充 (只遍历一次 XML, 比循环调 fill_bookmark 快)
-    fill_bookmarks(doc, {
-        "reporter": "王五",
-        "report_date": "2026-08-14",
-        "result": "合格",
-    }, font="微软雅黑")
-
-    # 追加模式 (不清除旧内容, 新文字追加在后面)
-    fill_bookmark(doc, "note", "补充说明", clear=False)
-
+    set_doc_fonts(doc, "微软雅黑")                  # 一次性修复中文字体
+    fill_bookmarks(doc, {...}, font="微软雅黑")     # 填书签
+    table = doc.tables[0]
+    set_cell(table.cell(1, 0), "项目名", bold=True) # 填表
+    add_rows(table, [["A", 1.5], ["B", 2.3]])       # 动态加数据
     doc.save("output.docx")
 """
+from .docx_font import set_run_font, set_style_font
+from .docx_common import set_doc_fonts, DEFAULT_STYLE_NAMES
 from .bookmark import (
-    set_run_font,
-    set_style_font,
     add_bookmark,
-    find_bookmark,
-    find_bookmarks,
-    fill_bookmark,
-    fill_bookmarks,
+    find_bookmark, find_bookmarks,
+    fill_bookmark, fill_bookmarks,
+    get_bookmark_text,
+)
+from .table import (
+    fill_table,
+    find_table_by_header, find_cell_by_text,
+    set_cell, format_cell, format_row,
+    add_rows,
+    set_repeat_header,
 )
 
+
 __all__ = [
-    "set_run_font",
-    "set_style_font",
+    # 字体
+    "set_run_font", "set_style_font",
+    # 文档级
+    "set_doc_fonts", "DEFAULT_STYLE_NAMES",
+    # 书签
     "add_bookmark",
-    "find_bookmark",
-    "find_bookmarks",
-    "fill_bookmark",
-    "fill_bookmarks",
+    "find_bookmark", "find_bookmarks",
+    "fill_bookmark", "fill_bookmarks",
+    "get_bookmark_text",
+    # 表格
+    "fill_table",
+    "find_table_by_header", "find_cell_by_text",
+    "set_cell", "format_cell", "format_row",
+    "add_rows",
+    "set_repeat_header",
 ]

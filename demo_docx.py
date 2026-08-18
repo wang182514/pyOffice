@@ -42,7 +42,9 @@ from docx.oxml.ns import qn                       # qn(): 把 "w:id" 转成带�
 # 书签操作已封装到 office_utils 包, 从包导入 (包内函数不再在本文件定义)
 from office_utils import (
     set_run_font, set_style_font,
-    add_bookmark, find_bookmark, fill_bookmark,
+    set_doc_fonts,
+    add_bookmark, find_bookmark, fill_bookmark, get_bookmark_text,
+    fill_table, set_cell, add_rows, set_repeat_header,
 )
 
 OUT_DIR = "output"
@@ -91,11 +93,8 @@ def write_docx(path):
 
     # 0. 关键修复: 给本文件用到的所有样式统一指定中文字体
     #    (不设置的话, 主题里中文字体为空 → 打开显示"方框叉")
-    #    在样式层面设一次, 后面所有用这些样式的段落自动继承, 比
-    #    每个 run 单独设省事。styles["名字"] 按样式名取样式对象。
-    for style_name in ["Normal", "Title", "Heading 1", "Heading 2",
-                       "List Bullet", "List Number"]:
-        set_style_font(doc.styles[style_name], CN_FONT)  #在函数里读全局变量不需要任何声明，但如果想修改（赋值）就必须用 global 关键字
+    #    一行调用搞定, 内部已处理 eastAsia 槽位
+    set_doc_fonts(doc, CN_FONT)
 
     # 1. 标题: add_heading(文字, level)
     #    level=0 → Title 样式(文档大标题, 通常是更大的字)
@@ -180,17 +179,6 @@ def write_docx(path):
     print(f"[写入完成] {path}")
 
 
-def fill_table(table, headers, rows):
-    """通用填表: 第 0 行当表头, 其余逐行 append
-    单元格本质是"小方格里的段落", cell.text = "xx" 会替换单元格内全部文字"""
-    for i, h in enumerate(headers):           # 表头
-        table.rows[0].cells[i].text = h
-    for row in rows:                          # 数据: add_row() 在表尾加一行
-        cells = table.add_row().cells
-        for i, val in enumerate(row):
-            cells[i].text = val
-
-
 # ---------------------------------------------------------------
 # 二、按书签写入 (模拟真实场景: 打开模板 → 填数据 → 保存)
 # ---------------------------------------------------------------
@@ -235,15 +223,12 @@ def read_docx(path):
             print("    " + " | ".join(cells))
     # 注意: 合并单元格会让被合并的格子返回相同内容(重复出现)
 
-    # 3. 读书签: 复用 find_bookmark 确认填充结果
+    # 3. 读书签: 用 get_bookmark_text 封装好的函数 (原 demo 里手写 XML 遍历)
     print("\n--- 读取书签 ---")
     for name in ["reporter", "report_date"]:
-        start, end = find_bookmark(doc, name)
-        if start is not None:
-            para_el = start.getparent()       # 书签的父节点 = 所在段落的 <w:p>
-            # 遍历段落里所有 <w:t> 文本节点拼出整段文字
-            text = "".join(t.text or "" for t in para_el.iter(qn("w:t")))
-            print(f"  书签 '{name}' 存在, 所在段落文字: {text}")
+        text = get_bookmark_text(doc, name)
+        if text is not None:
+            print(f"  书签 '{name}' 文字: {text}")
 
     # 4. 其他常用统计
     print("\n--- 其他统计 ---")
