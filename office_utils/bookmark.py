@@ -158,63 +158,136 @@ def _clear_bookmark_content(start, end):
         el = nxt
 
 
-def fill_bookmark(doc, name, text, font=None, *, clear=True):
+import difflib
+import warnings
+
+
+def _suggest_name(name, existing, n=3):
+    """拼写建议: 找不到书签名时, 找最相似的几个
+
+    利用 difflib.get_close_matches 算相似度, 返回最像的 n 个
+    """
+    return difflib.get_close_matches(name, existing, n=n, cutoff=0.6)
+
+
+def fill_bookmark(doc, name, text, font=None, *, clear=True, on_missing="raise"):
     """按书签填充: 在书签位置插入新文字
 
     Args:
-        doc:   python-docx 的 Document 对象
-        name:  书签名
-        text:  要写入的新文字
-        font:  可选字体名, 如 "微软雅黑"
-        clear: 是否清除书签内的旧内容, 默认 True (覆盖语义)
-               False 为追加语义, 旧内容保留、新文字插在书签起点后
+        doc:        python-docx 的 Document 对象
+        name:       书签名
+        text:       要写入的新文字
+        font:       可选字体名, 如 "微软雅黑"
+        clear:      是否清除书签内的旧内容, 默认 True (覆盖语义)
+                    False 为追加语义, 旧内容保留、新文字插在书签起点后
+        on_missing: 书签不存在时如何处理:
+            "raise" - 抛 ValueError (默认, 开发期推荐)
+            "skip"  - 静默跳过, 不写也不报错, 返回 False
+            "warn"  - 打印/警告, 继续填充, 返回 False
+
+    Returns:
+        True  填充成功
+        False 书签不存在 (仅当 on_missing != "raise")
 
     Raises:
-        ValueError: 书签不存在时抛出
+        ValueError: on_missing="raise" 且书签不存在时抛出
+        ValueError: on_missing 取值非法时抛出
     """
+    if on_missing not in ("raise", "skip", "warn"):
+        raise ValueError(
+            f"on_missing 必须是 'raise' / 'skip' / 'warn' 之一, 收到: {on_missing!r}"
+        )
+
     start, end = find_bookmark(doc, name)
     if start is None:
-        raise ValueError(f"书签 '{name}' 不存在")
+        msg = _on_missing_message(doc, name, on_missing, [name])
+        if on_missing == "raise":
+            raise ValueError(msg)
+        elif on_missing == "warn":
+            warnings.warn(msg, stacklevel=2)
+        # skip / warn 都返回 False
+        return False
 
     if clear:
         _clear_bookmark_content(start, end)
     start.addnext(_build_run(text, font))
+    return True
 
 
-def fill_bookmarks(doc, data, font=None, *, clear=True):
+def _on_missing_message(doc, missing_name_or_list, on_missing, missing_list):
+    """构造提示信息: 缺失书签名 + 文档中现有书签 + 拼写建议"""
+    existing = list(find_bookmarks(doc).keys())
+    if isinstance(missing_name_or_list, str) and len(missing_list) == 1:
+        # 单个: 给具体拼写建议
+        suggests = _suggest_name(missing_name_or_list, existing)
+        head = f"书签 '{missing_name_or_list}' 不存在"
+    else:
+        head = f"以下书签不存在: {missing_list}"
+        suggests = []
+    body = f"  文档中现有书签: {existing}"
+    if suggests:
+        body += f"\n  你是不是想写: {suggests}?"
+    return head + "\n" + body
+
+
+def fill_bookmarks(doc, data, font=None, *, clear=True, on_missing="raise"):
     """批量按书签填充: 一次遍历查找所有书签, 然后逐个替换
 
     相比循环调用 fill_bookmark, 查找阶段只遍历一次 XML 树,
     N 个书签的性能从 O(2N * 节点数) 降到 O(节点数)。
 
     Args:
-        doc:   python-docx 的 Document 对象
-        data:  dict, {书签名: 要写入的文字, ...}
-        font:  可选字体名
-        clear: 是否清除旧内容, 默认 True
+        doc:        python-docx 的 Document 对象
+        data:       dict, {书签名: 要写入的文字, ...}
+        font:       可选字体名
+        clear:      是否清除旧内容, 默认 True
+        on_missing: 缺失书签时的处理:
+            "raise" - 一次性列出所有缺失的并抛 ValueError (默认)
+            "skip"  - 跳过缺失的, 填充存在的, 返回填充成功的书签名列表
+            "warn"  - 打印警告, 跳过后继续填充, 返回填充成功的书签名列表
+
+    Returns:
+        list: 成功填充的书签名列表 (便于判断哪些没填)
 
     Raises:
-        ValueError: 有书签不存在时抛出 (一次性列出所有缺失的书签名)
+        ValueError: on_missing="raise" 且有缺失时抛出
 
     Example:
-        fill_bookmarks(doc, {
-            "reporter": "王五",
-            "report_date": "2026-08-14",
-        }, font="微软雅黑")
+        # 必需字段缺失就报错
+        fill_bookmarks(doc, {"reporter": "王五"}, on_missing="raise")
+
+        # 可选字段缺失就跳过
+        fill_bookmarks(doc, {"note": "补充"}, on_missing="skip")
     """
+    if on_missing not in ("raise", "skip", "warn"):
+        raise ValueError(
+            f"on_missing 必须是 'raise' / 'skip' / 'warn' 之一, 收到: {on_missing!r}"
+        )
+
     all_bookmarks = find_bookmarks(doc)
 
     missing = [name for name in data if name not in all_bookmarks]
-    if missing:
-        raise ValueError(
-            f"以下书签不存在: {missing}  (文档中现有书签: {list(all_bookmarks.keys())})"
-        )
 
+    if missing:
+        if on_missing == "raise":
+            msg = _on_missing_message(doc, missing, on_missing, missing)
+            raise ValueError(msg)
+        elif on_missing == "warn":
+            for name in missing:
+                msg = _on_missing_message(doc, name, on_missing, [name])
+                warnings.warn(msg, stacklevel=2)
+        # skip / warn 都跳过缺失项
+
+    # 只填充存在的书签
+    filled = []
     for name, text in data.items():
-        if clear:
-            start, end = all_bookmarks[name]
-            _clear_bookmark_content(start, end)
-            start.addnext(_build_run(text, font))
-        else:
-            start, end = find_bookmark(doc, name)
-            start.addnext(_build_run(text, font))
+        if name in all_bookmarks:
+            if clear:
+                start, end = all_bookmarks[name]
+                _clear_bookmark_content(start, end)
+                start.addnext(_build_run(text, font))
+            else:
+                start, end = find_bookmark(doc, name)
+                start.addnext(_build_run(text, font))
+            filled.append(name)
+    return filled
